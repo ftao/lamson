@@ -65,6 +65,7 @@ If you find an instance where this is not the case, then submit it to the
 project as a test case.
 """
 
+import logging
 import string
 from email.charset import Charset
 import chardet
@@ -330,12 +331,13 @@ def decode_message_body(mail, message):
         # decode the payload according to the charset given if it's text
         ctype, params = mail.content_encoding['Content-Type']
 
-        if not ctype:
-            charset = 'ascii'
-            mail.body = attempt_decoding(charset, mail.body)
-        elif ctype.startswith("text/"):
+        if not ctype or ctype.startswith("text/"):
             charset = params.get('charset', 'ascii')
-            mail.body = attempt_decoding(charset, mail.body)
+            try:
+                mail.body = attempt_decoding(charset, mail.body)
+            except EncodingError, e:
+                logging.warn(e)
+                mail.body = force_decoding(charset, mail.body)
         else:
             # it's a binary codec of some kind, so just decode and leave it
             # alone for now
@@ -414,6 +416,13 @@ def attempt_decoding(charset, dec):
     except LookupError:
         # they gave a crap encoding
         return guess_encoding_and_decode(charset, dec)
+
+def force_decoding(charset, dec):
+    if isinstance(dec, unicode):
+        # it's already unicode so just return it
+        return dec
+    else:
+        return dec.decode(charset, 'ignore')
 
 
 def apply_charset_to_header(charset, encoding, data):
